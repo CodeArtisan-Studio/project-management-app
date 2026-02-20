@@ -1,7 +1,8 @@
-import { Role } from '@/generated/prisma/client';
+import { Role, ActivityAction } from '@/generated/prisma/client';
 import { AppError } from '@/utils/appError';
 import { PaginatedResponse } from '@/types';
 import { userRepository } from '@/modules/user/user.repository';
+import { activityService } from '@/modules/activity/activity.service';
 import {
   projectRepository,
   ProjectWithOwner,
@@ -31,7 +32,16 @@ export const projectService = {
     requesterId: string,
     data: CreateProjectInput,
   ): Promise<ProjectWithOwner> {
-    return projectRepository.create(requesterId, data);
+    const project = await projectRepository.create(requesterId, data);
+
+    void activityService.log({
+      projectId: project.id,
+      userId:    requesterId,
+      action:    ActivityAction.PROJECT_CREATED,
+      metadata:  { projectName: project.name },
+    });
+
+    return project;
   },
 
   // ─── Get all projects with pagination + search ───────────
@@ -92,7 +102,21 @@ export const projectService = {
 
     assertOwnerOrAdmin(project, requesterId, requesterRole);
 
-    return projectRepository.updateById(id, data);
+    const updated = await projectRepository.updateById(id, data);
+
+    // Resolve the most specific action: status transitions take precedence.
+    let action: ActivityAction = ActivityAction.PROJECT_UPDATED;
+    if (data.status === 'ARCHIVED')  action = ActivityAction.PROJECT_ARCHIVED;
+    if (data.status === 'COMPLETED') action = ActivityAction.PROJECT_COMPLETED;
+
+    void activityService.log({
+      projectId: id,
+      userId:    requesterId,
+      action,
+      metadata:  { projectName: project.name, changes: data },
+    });
+
+    return updated;
   },
 
   // ─── Soft delete a project ────────────────────────────────
@@ -108,6 +132,13 @@ export const projectService = {
     assertOwnerOrAdmin(project, requesterId, requesterRole);
 
     await projectRepository.softDeleteById(id);
+
+    void activityService.log({
+      projectId: id,
+      userId:    requesterId,
+      action:    ActivityAction.PROJECT_DELETED,
+      metadata:  { projectName: project.name },
+    });
   },
 
   // ─── Get project members ──────────────────────────────────
@@ -158,7 +189,20 @@ export const projectService = {
     const alreadyMember = await projectRepository.isMember(projectId, targetUserId);
     if (alreadyMember) throw AppError.conflict('User is already a member of this project.');
 
-    return projectRepository.addMember(projectId, targetUserId);
+    const member = await projectRepository.addMember(projectId, targetUserId);
+
+    void activityService.log({
+      projectId,
+      userId:   requesterId,
+      action:   ActivityAction.MEMBER_ADDED,
+      metadata: {
+        memberId:    targetUserId,
+        memberName:  `${targetUser.firstName} ${targetUser.lastName}`,
+        memberEmail: targetUser.email,
+      },
+    });
+
+    return member;
   },
 
   // ─── Remove a member from a project ──────────────────────
@@ -178,5 +222,12 @@ export const projectService = {
     if (!isMember) throw AppError.notFound('User is not a member of this project.');
 
     await projectRepository.removeMember(projectId, targetUserId);
+
+    void activityService.log({
+      projectId,
+      userId:   requesterId,
+      action:   ActivityAction.MEMBER_REMOVED,
+      metadata: { memberId: targetUserId },
+    });
   },
 };

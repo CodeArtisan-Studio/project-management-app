@@ -11,6 +11,8 @@ import { AppError } from '@/utils/appError';
 import { authRoutes } from '@/modules/auth/auth.routes';
 import { userRoutes } from '@/modules/user/user.routes';
 import { projectRoutes } from '@/modules/project/project.routes';
+import { dashboardRoutes } from '@/modules/dashboard/dashboard.routes';
+import { reportRoutes } from '@/modules/report/report.routes';
 import { swaggerSpec, swaggerUi } from '@/config/swagger';
 
 const app = express();
@@ -75,6 +77,8 @@ app.get('/api/health', (_req: Request, res: Response) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/projects', projectRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/reports',   reportRoutes);
 
 // ─── 404 Catch-All ─────────────────────────────────────
 app.all('/{*splat}', (req: Request, _res: Response) => {
