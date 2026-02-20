@@ -1,6 +1,7 @@
-import { Role } from '@/generated/prisma/client';
+import { Role, ActivityAction } from '@/generated/prisma/client';
 import { AppError } from '@/utils/appError';
 import { PaginatedResponse } from '@/types';
+import { activityService } from '@/modules/activity/activity.service';
 import {
   projectRepository,
   ProjectWithOwner,
@@ -67,7 +68,17 @@ export const taskService = {
   ): Promise<TaskStatusRecord> {
     const project = await assertProjectAccess(projectId, requesterId, requesterRole);
     assertOwnerOrAdmin(project, requesterId, requesterRole);
-    return taskRepository.createStatus(projectId, data);
+
+    const status = await taskRepository.createStatus(projectId, data);
+
+    void activityService.log({
+      projectId,
+      userId:   requesterId,
+      action:   ActivityAction.STATUS_CREATED,
+      metadata: { statusId: status.id, statusName: status.name },
+    });
+
+    return status;
   },
 
   // ─── Task Status: Get All ────────────────────────────
@@ -99,7 +110,16 @@ export const taskService = {
       throw AppError.forbidden('Task status does not belong to this project.');
     }
 
-    return taskRepository.updateStatus(statusId, data);
+    const updated = await taskRepository.updateStatus(statusId, data);
+
+    void activityService.log({
+      projectId,
+      userId:   requesterId,
+      action:   ActivityAction.STATUS_UPDATED,
+      metadata: { statusId, statusName: updated.name, changes: data },
+    });
+
+    return updated;
   },
 
   // ─── Task Status: Delete ─────────────────────────────
@@ -128,6 +148,13 @@ export const taskService = {
     }
 
     await taskRepository.deleteStatus(statusId);
+
+    void activityService.log({
+      projectId,
+      userId:   requesterId,
+      action:   ActivityAction.STATUS_DELETED,
+      metadata: { statusId, statusName: status.name },
+    });
   },
 
   // ─── Task: Create ────────────────────────────────────
@@ -146,7 +173,16 @@ export const taskService = {
       throw AppError.badRequest('Task status does not belong to this project.');
     }
 
-    return taskRepository.create(projectId, data);
+    const task = await taskRepository.create(projectId, data);
+
+    void activityService.log({
+      projectId,
+      userId:   requesterId,
+      action:   ActivityAction.TASK_CREATED,
+      metadata: { taskId: task.id, taskTitle: task.title },
+    });
+
+    return task;
   },
 
   // ─── Task: Get All (paginated) ───────────────────────
@@ -203,7 +239,50 @@ export const taskService = {
       }
     }
 
-    return taskRepository.updateById(taskId, data);
+    const updated = await taskRepository.updateById(taskId, data);
+
+    void activityService.log({
+      projectId,
+      userId:   requesterId,
+      action:   ActivityAction.TASK_UPDATED,
+      metadata: { taskId, taskTitle: task.title },
+    });
+
+    // Emit a more specific event when the status column changed.
+    if (data.statusId !== undefined && data.statusId !== task.statusId) {
+      void activityService.log({
+        projectId,
+        userId:   requesterId,
+        action:   ActivityAction.TASK_STATUS_CHANGED,
+        metadata: {
+          taskId,
+          taskTitle:    task.title,
+          fromStatusId: task.statusId,
+          toStatusId:   data.statusId,
+        },
+      });
+    }
+
+    // Emit assignment events when the assignee field was explicitly supplied.
+    if (data.assigneeId !== undefined && data.assigneeId !== task.assigneeId) {
+      if (data.assigneeId !== null) {
+        void activityService.log({
+          projectId,
+          userId:   requesterId,
+          action:   ActivityAction.TASK_ASSIGNED,
+          metadata: { taskId, taskTitle: task.title, assigneeId: data.assigneeId },
+        });
+      } else if (task.assigneeId !== null) {
+        void activityService.log({
+          projectId,
+          userId:   requesterId,
+          action:   ActivityAction.TASK_UNASSIGNED,
+          metadata: { taskId, taskTitle: task.title, previousAssigneeId: task.assigneeId },
+        });
+      }
+    }
+
+    return updated;
   },
 
   // ─── Task: Soft Delete ───────────────────────────────
@@ -225,5 +304,12 @@ export const taskService = {
     assertOwnerOrAdmin(project, requesterId, requesterRole);
 
     await taskRepository.softDeleteById(taskId);
+
+    void activityService.log({
+      projectId,
+      userId:   requesterId,
+      action:   ActivityAction.TASK_DELETED,
+      metadata: { taskId, taskTitle: task.title },
+    });
   },
 };

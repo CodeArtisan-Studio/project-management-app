@@ -10,6 +10,7 @@ import {
   AddMemberSchema,
 } from './project.dto';
 import { taskRoutes, taskStatusRoutes } from '@/modules/task/task.routes';
+import { activityRoutes } from '@/modules/activity/activity.routes';
 
 const router = Router();
 
@@ -62,5 +63,8 @@ router.delete('/:id/members/:userId', requireAuth, projectController.removeProje
 // ─── Task Sub-Routers ──────────────────────────────────
 router.use('/:id/tasks', taskRoutes);
 router.use('/:id/statuses', taskStatusRoutes);
+
+// ─── Activity Sub-Router ───────────────────────────────
+router.use('/:id/activities', activityRoutes);
 
 export { router as projectRoutes };
