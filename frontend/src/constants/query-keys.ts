@@ -37,11 +37,15 @@ export const QUERY_KEYS = {
       [...QUERY_KEYS.activities.lists(projectId), filters] as const,
   },
   reports: {
-    all:             ['reports'] as const,
-    summary:         () => ['reports', 'summary'] as const,
-    completionRate:  (params?: Record<string, unknown>) =>
+    all:              ['reports'] as const,
+    summary:          () => ['reports', 'summary'] as const,
+    completionRate:   (params?: Record<string, unknown>) =>
       ['reports', 'completion-rate', params] as const,
     activityOverTime: (params: Record<string, unknown>) =>
       ['reports', 'activity-over-time', params] as const,
+    tasksByProject:   (params?: Record<string, unknown>) =>
+      ['reports', 'tasks-by-project', params] as const,
+    tasksByAssignee:  (params?: Record<string, unknown>) =>
+      ['reports', 'tasks-by-assignee', params] as const,
   },
 } as const;
